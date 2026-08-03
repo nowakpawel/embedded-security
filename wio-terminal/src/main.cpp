@@ -75,7 +75,7 @@ void loop() {
     Serial.print("\npitch: ");        Serial.print(pitch, 1);
     Serial.print("\nroll: ");         Serial.print(roll, 1);
     Serial.print("\nposition: ");     Serial.println(position);
-    
+
     Serial.print("\n\n");
 
     delay(1000);
