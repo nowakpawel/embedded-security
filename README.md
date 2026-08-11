@@ -22,6 +22,10 @@ Coming from an enterprise software background (Java, QA, cybersecurity homelab),
 * ***IMU orientation over I2C*** - `week3-imu-orientation` -> Live orientation readout (pitch/ roll orientation labels + raw X/Y/Z) from the on-board LIS3DHTR accelerometer, on the LCD and streamed over Serial. 
 Written against the datasheet. No high-level driver library.
 Register level I2C: multi-byte reads with autoincrement, data from three axis, `atan2`- based angle computation.
+* ***Button class (C++ refactor)*** -> Register-level button handling encapsulated in `Button` class (private state, edge detection, press counter). Refactored from loose global state into an object with a two-argument constructor. (PORT group + bit), `update()` for falling-edge detection,
+and `count() const`. RAII style pin configuration via the constructor. Split into `.h`/`.cpp`.
+**Known limitations**
+* *No debounce** - a single press *may* 
 
 ## Approach
 
