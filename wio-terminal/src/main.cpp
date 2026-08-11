@@ -2,11 +2,14 @@
 #include <Wire.h>
 #include <math.h> //atan2
 
-TFT_eSPI tft;
-const uint8_t LIS3DH_ADDR       = 0x18;
-const uint8_t REG_CTRL_REG1     = 0x20;
-const int8_t REG_OUT_X_L        = 0x28;
+#include "Button.h"
 
+TFT_eSPI tft;
+const uint8_t LIS3DH_ADDR = 0x18;
+const uint8_t REG_CTRL_REG1 = 0x20;
+const int8_t REG_OUT_X_L = 0x28;
+
+Button *buttonA;
 
 
 void setup() {
@@ -26,9 +29,12 @@ void setup() {
     Wire1.endTransmission(true);
 
     Serial.println("LIS3DH init done");
+
+    buttonA = new Button(2, 26);
 }
 
 void loop() {
+    buttonA->update();
     Wire1.beginTransmission(LIS3DH_ADDR);
     Wire1.write(0x80 | REG_OUT_X_L);
     Wire1.endTransmission(true);
@@ -45,38 +51,56 @@ void loop() {
     int16_t y = (yh << 8) | yl;
     int16_t z = (zh << 8) | zl;
 
-    float pitch = atan2((float)x, sqrt((float)y * y + (float)z*z)) * 180.0 / PI;
-    float roll = atan2((float)y, sqrt((float)x * x + (float)z*z)) * 180.0 / PI;
+    float pitch = atan2((float) x, sqrt((float) y * y + (float) z * z)) * 180.0 / PI;
+    float roll = atan2((float) y, sqrt((float) x * x + (float) z * z)) * 180.0 / PI;
 
-    const char* position;
+    const char *position;
     int16_t ax = abs(x), ay = abs(y), az = abs(z);
 
     if (az > ax && az > ay) {
-        position = (z > 0) ? "UPSIDE DOWN": "FLAT";
+        position = (z > 0) ? "UPSIDE DOWN" : "FLAT";
     } else if (ax > ay) {
         position = (x > 0) ? "VERTICAL (front)" : "VERTICAL (back)";
     } else {
-        position = (y > 0) ? "ON SIDE (L)": "ON SIDE (R)";
+        position = (y > 0) ? "ON SIDE (L)" : "ON SIDE (R)";
     }
 
     //LCD
     tft.setTextSize(3);
-    tft.setCursor(10, 15); tft.print("pitch: "); tft.print(pitch, 0); tft.print((char)247); tft.print("      ");
-    tft.setCursor(10, 55); tft.print("roll: "); tft.print(roll, 0); tft.print((char)247); tft.print("      ");
+    tft.setCursor(10, 15);
+    tft.print("pitch: ");
+    tft.print(pitch, 0);
+    tft.print((char) 247);
+    tft.print("      ");
+    tft.setCursor(10, 55);
+    tft.print("roll: ");
+    tft.print(roll, 0);
+    tft.print((char) 247);
+    tft.print("      ");
 
     tft.setTextSize(2);
-    tft.setCursor(10, 110); tft.print("Position:        ");
-    tft.setCursor(10, 135); tft.print(position); tft.print("        ");
+    tft.setCursor(10, 110);
+    tft.print("Position:        ");
+    tft.setCursor(10, 135);
+    tft.print(position);
+    tft.print("        ");
 
     //Serial log
-    Serial.print("X: ");            Serial.print(x);
-    Serial.print("\nY: ");            Serial.print(y);
-    Serial.print("\nZ: ");            Serial.print(z);
-    Serial.print("\npitch: ");        Serial.print(pitch, 1);
-    Serial.print("\nroll: ");         Serial.print(roll, 1);
-    Serial.print("\nposition: ");     Serial.println(position);
+    Serial.print("X: ");
+    Serial.print(x);
+    Serial.print("\nY: ");
+    Serial.print(y);
+    Serial.print("\nZ: ");
+    Serial.print(z);
+    Serial.print("\npitch: ");
+    Serial.print(pitch, 1);
+    Serial.print("\nroll: ");
+    Serial.print(roll, 1);
+    Serial.print("\nposition: ");
+    Serial.println(position);
 
     Serial.print("\n\n");
 
-    delay(1000);
+    Serial.printf("\nButton A pressed %lu times\n", buttonA->count());
+    delay(100);
 }
