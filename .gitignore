@@ -1,3 +1,10 @@
+.idea/
 .pio/
-bin/
+
+#Ignore all build output directories in the project repo
+**/bin/
+**/build/
+
 compile_commands.json
+
+#core_crypto project wildcard
