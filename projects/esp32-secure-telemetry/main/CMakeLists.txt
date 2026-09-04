@@ -5,4 +5,7 @@ idf_component_register(
             "."
         REQUIRES
             diagnostics
+            freertos
+            log
+            esp_driver_gpio
 )
