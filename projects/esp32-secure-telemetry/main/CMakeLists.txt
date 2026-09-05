@@ -5,6 +5,7 @@ idf_component_register(
             "."
         REQUIRES
             diagnostics
+            telemetry
             freertos
             log
             esp_driver_gpio
