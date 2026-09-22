@@ -12,6 +12,8 @@ namespace diagnostics {
 				static_cast<std::uint32_t>(heap_caps_get_free_size(MALLOC_CAP_8BIT)),
 			.minimum_free_heap_bytes = 
 				static_cast<std::uint32_t>(heap_caps_get_minimum_free_size(MALLOC_CAP_8BIT)),
+			.total_heap_bytes =
+				static_cast<std::uint32_t>(heap_caps_get_total_size(MALLOC_CAP_8BIT)),
 		};
 
 		return snapshot;

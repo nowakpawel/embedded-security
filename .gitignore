@@ -7,4 +7,6 @@
 
 compile_commands.json
 
+sdkconfig.old
+
 #core_crypto project wildcard

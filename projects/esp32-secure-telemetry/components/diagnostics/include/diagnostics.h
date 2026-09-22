@@ -7,6 +7,7 @@ namespace diagnostics {
 		std::uint64_t uptime_ms;
 		std::uint32_t free_heap_bytes;
 		std::uint32_t minimum_free_heap_bytes;
+		std::uint32_t total_heap_bytes;
 	};
 
 	Snapshot collect();

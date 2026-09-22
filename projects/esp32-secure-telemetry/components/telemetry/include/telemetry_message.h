@@ -10,6 +10,7 @@ namespace telemetry {
         std::uint32_t free_heap_bytes;
         std::uint32_t minimum_free_heap_bytes;
         std::uint32_t minimum_free_stack_bytes;
+        std::uint32_t total_heap_bytes;
     };
 
     static_assert(

@@ -1,14 +1,14 @@
 #include <cinttypes>
-#include <cstdint>
 
 #include "diagnostics.h"
 #include "driver/gpio.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
 #include "esp_log.h"
 #include "esp_err.h"
-#include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "telemetry_message.h"
-#include "../components/telemetry/include/telemetry_message.h"
+#include "telemetry_validator.h"
 
 namespace {
     constexpr char TAG[] = "secure_telemetry";
@@ -26,7 +26,7 @@ namespace {
 
     constexpr TickType_t DIAGNOSTICS_INTERVAL = pdMS_TO_TICKS(5000);
 
-    constexpr TickType_t BLINK_DURATION = pdMS_TO_TICKS(100);
+    constexpr TickType_t BLINK_DURATION = pdMS_TO_TICKS(4900);
 
     constexpr TickType_t QUEUE_SEND_TIMEOUT = pdMS_TO_TICKS(6000);
     constexpr TickType_t QUEUE_RECEIVE_TIMEOUT = pdMS_TO_TICKS(6000);
@@ -50,12 +50,12 @@ namespace {
         ESP_ERROR_CHECK(gpio_set_level(BLINK_GPIO, LED_OFF));
     }
 
-    QueueHandle_t get_queue_from_paraeters(void* parameters) {
+    QueueHandle_t get_queue_from_parameters(void* parameters) {
         return static_cast<QueueHandle_t>(parameters);
     }
 
     void diagnostics_task(void *parameters) {
-        QueueHandle_t telemetry_queue = get_queue_from_paraeters(parameters);
+        QueueHandle_t telemetry_queue = get_queue_from_parameters(parameters);
 
         if (telemetry_queue == nullptr) {
             ESP_LOGE(TAG, "Diagnostics task received a null queue");
@@ -75,11 +75,12 @@ namespace {
             const auto minimum_free_stack = uxTaskGetStackHighWaterMark(nullptr);
 
             const telemetry::TelemetryMessage message{
-                .uptime_ms =  snapshot.uptime_ms,
+                .uptime_ms = snapshot.uptime_ms,
                 .sequence = sequence,
                 .free_heap_bytes = snapshot.free_heap_bytes,
                 .minimum_free_heap_bytes = snapshot.minimum_free_heap_bytes,
                 .minimum_free_stack_bytes = static_cast<std::uint32_t>(minimum_free_stack),
+                .total_heap_bytes = static_cast<std::uint32_t>(snapshot.total_heap_bytes),
             };
 
             const BaseType_t send_result = xQueueSend(
@@ -88,7 +89,7 @@ namespace {
                 QUEUE_SEND_TIMEOUT);
 
             if (send_result != pdPASS) {
-                ESP_LOGW(TAG, "Telemetry queue full; dropped message: %%" PRIu32, message.sequence);
+                ESP_LOGW(TAG, "Telemetry queue full; dropped message: %" PRIu32, message.sequence);
             }
 
             sequence++;
@@ -105,7 +106,7 @@ namespace {
     }
 
     void processing_task(void* parameters) {
-        QueueHandle_t telemetry_queue = get_queue_from_paraeters(parameters);
+        QueueHandle_t telemetry_queue = get_queue_from_parameters(parameters);
 
         if (telemetry_queue == nullptr) {
             ESP_LOGE(TAG, "Processing task received a null queue");
@@ -128,16 +129,36 @@ namespace {
                 continue;
             }
 
+            const::telemetry::ValidationResult validation_result =
+                telemetry::validate(message);
+
+            if (validation_result != telemetry::ValidationResult::valid) {
+                ESP_LOGW(
+                    TAG,
+                    "Rejected telemetry message sequence = %" PRIu32
+                    ", reason: %s", message.sequence,
+                    telemetry::to_string(validation_result));
+                continue;
+            }
+
+            const std::uint32_t used_heap_bytes = message.total_heap_bytes - message.free_heap_bytes;
+
+
+
             ESP_LOGI(TAG,
-                "received_sequence = %" PRIu32
-                ", uptime = %" PRIu64
-                "ms, free_heap = %" PRIu32
-                " bytes, minimum_free_heap = %" PRIu32
-                " bytes, producer_minimum_free_stack = % " PRIu32
+                "sequence = %" PRIu32
+                "\nuptime = %" PRIu64
+                "ms\nheap_used = %" PRIu32
+                " bytes\nheap_free = %" PRIu32
+                " bytes\nheap_total = %" PRIu32
+                " bytes\nminimum_free_heap = %" PRIu32
+                " bytes\nminimum_free_stack = % " PRIu32
                 " bytes",
                 message.sequence,
                 message.uptime_ms,
+                used_heap_bytes,
                 message.free_heap_bytes,
+                message.total_heap_bytes,
                 message.minimum_free_heap_bytes,
                 message.minimum_free_stack_bytes);
         }
@@ -145,7 +166,7 @@ namespace {
 }
 
 extern "C" void app_main() {
-    ESP_LOGI(TAG, "Starting Secure Telemetry");
+    ESP_LOGI(TAG, "Starting Secure Telemetry...");
 
     configure_status_led();
 
@@ -184,7 +205,7 @@ extern "C" void app_main() {
         DIAGNOSTICS_TASK_STACK_SIZE,
         telemetry_queue,
         DIAGNOSTICS_TASK_PRIORITY,
-        &processing_task_handle);
+        nullptr);
 
 
     if (diagnostics_task_result != pdPASS) {
