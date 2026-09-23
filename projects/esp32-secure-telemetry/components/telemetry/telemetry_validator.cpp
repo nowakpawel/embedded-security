@@ -1,5 +1,4 @@
 #include "telemetry_validator.h"
-#include "include/telemetry_validator.h"
 
 namespace telemetry {
     ValidationResult validate(const TelemetryMessage& message) {
@@ -43,7 +42,7 @@ namespace telemetry {
             case ValidationResult::free_heap_exceeds_total_heap:
                 return "free_heap_exceeds_total_heap";
             case ValidationResult::minimum_free_heap_exceeds_current_heap:
-                return "free_heap_exceeds_total_heap";
+                return "minimum_free_heap_exceeds_current_heap";
             case ValidationResult::minimum_free_stack_is_zero:
                 return "minimum_free_stack_is_zero";
         }
