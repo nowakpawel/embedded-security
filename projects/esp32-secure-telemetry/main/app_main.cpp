@@ -11,6 +11,7 @@
 #include "telemetry_validator.h"
 #include "telemetry_sequence.h"
 
+#include "esp_timer.h"
 
 namespace {
     constexpr char TAG[] = "secure_telemetry";
@@ -71,6 +72,7 @@ namespace {
         ESP_LOGI(TAG, "Diagnostics task started");
 
         while (true) {
+           const int64_t start_time_us = esp_timer_get_time();
             ESP_ERROR_CHECK(
                 gpio_set_level(BLINK_GPIO, LED_ON));
             const diagnostics::Snapshot snapshot = diagnostics::collect();
@@ -100,6 +102,14 @@ namespace {
 
             ESP_ERROR_CHECK(
                 gpio_set_level(BLINK_GPIO, LED_OFF));
+
+            const int64_t end_time_us = esp_timer_get_time();
+            const int64_t elapsed_time_us = end_time_us - start_time_us;
+
+            ESP_LOGI(TAG,
+                "LED active duration = %" PRIu64 "μs (%" PRIu64 " ms)",
+                elapsed_time_us,
+                elapsed_time_us /1000);
 
             xTaskDelayUntil(
                 &last_wake_time,

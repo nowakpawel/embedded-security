@@ -10,4 +10,5 @@ idf_component_register(
             log
             esp_driver_gpio
             driver
+            esp_timer
 )
