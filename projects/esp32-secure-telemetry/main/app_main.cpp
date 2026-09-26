@@ -9,6 +9,8 @@
 #include "freertos/task.h"
 #include "telemetry_message.h"
 #include "telemetry_validator.h"
+#include "telemetry_sequence.h"
+
 
 namespace {
     constexpr char TAG[] = "secure_telemetry";
@@ -26,7 +28,7 @@ namespace {
 
     constexpr TickType_t DIAGNOSTICS_INTERVAL = pdMS_TO_TICKS(5000);
 
-    constexpr TickType_t BLINK_DURATION = pdMS_TO_TICKS(4900);
+    constexpr TickType_t BLINK_DURATION = pdMS_TO_TICKS(100);
 
     constexpr TickType_t QUEUE_SEND_TIMEOUT = pdMS_TO_TICKS(6000);
     constexpr TickType_t QUEUE_RECEIVE_TIMEOUT = pdMS_TO_TICKS(6000);
@@ -116,6 +118,8 @@ namespace {
 
         ESP_LOGI(TAG, "Processing task started");
 
+        telemetry::SequenceTracker sequence_tracker;
+
         while (true) {
             telemetry::TelemetryMessage message{};
 
@@ -141,9 +145,18 @@ namespace {
                 continue;
             }
 
+            const telemetry::SequenceResult sequence_result = sequence_tracker.observe(message.sequence);
+
+            ESP_LOGI(TAG,
+                "sequence_status = %s, expected = %" PRIu32
+                ", received = %" PRIu32
+                ", missing = %" PRIu32,
+                telemetry::to_string(sequence_result.status),
+                sequence_result.expected_sequence,
+                sequence_result.received_sequence,
+                sequence_result.missing_messages);
+
             const std::uint32_t used_heap_bytes = message.total_heap_bytes - message.free_heap_bytes;
-
-
 
             ESP_LOGI(TAG,
                 "sequence = %" PRIu32
