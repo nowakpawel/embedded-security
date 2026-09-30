@@ -39,6 +39,14 @@ namespace {
     constexpr std::uint32_t LED_ON = 1;
     constexpr std::uint32_t LED_OFF = 0;
 
+    //Set to true only for integration fault-injection tests.
+    constexpr bool ENABLE_DUPLICATE_SEQUENCE_INJECTION = false;
+    constexpr std::uint32_t DUPLICATE_SEQUENCE_TRIGGER = 5;
+
+    static_assert(
+        DUPLICATE_SEQUENCE_TRIGGER > 0,
+        "Duplicate sequence trigger must be grater than zero");
+
 
     void configure_status_led() {
         gpio_config_t config{};
@@ -53,7 +61,7 @@ namespace {
         ESP_ERROR_CHECK(gpio_set_level(BLINK_GPIO, LED_OFF));
     }
 
-    QueueHandle_t get_queue_from_parameters(void* parameters) {
+    QueueHandle_t get_queue_from_parameters(void *parameters) {
         return static_cast<QueueHandle_t>(parameters);
     }
 
@@ -68,19 +76,33 @@ namespace {
 
         TickType_t last_wake_time = xTaskGetTickCount();
         std::uint32_t sequence = 0;
+        bool duplicate_sequence_injected = false;
 
         ESP_LOGI(TAG, "Diagnostics task started");
 
         while (true) {
-           const int64_t start_time_us = esp_timer_get_time();
+            const int64_t start_time_us = esp_timer_get_time();
             ESP_ERROR_CHECK(
                 gpio_set_level(BLINK_GPIO, LED_ON));
             const diagnostics::Snapshot snapshot = diagnostics::collect();
             const auto minimum_free_stack = uxTaskGetStackHighWaterMark(nullptr);
 
+            std::uint32_t sequence_to_send = sequence;
+
+            if (ENABLE_DUPLICATE_SEQUENCE_INJECTION && !duplicate_sequence_injected
+                && sequence == DUPLICATE_SEQUENCE_TRIGGER) {
+                sequence_to_send = sequence - 1U;
+                duplicate_sequence_injected = true;
+
+                ESP_LOGW(TAG,
+                         "Injecting duplicate sequence: %" PRIu32, sequence_to_send);
+            } else {
+                sequence++;
+            }
+
             const telemetry::TelemetryMessage message{
                 .uptime_ms = snapshot.uptime_ms,
-                .sequence = sequence,
+                .sequence = sequence_to_send,
                 .free_heap_bytes = snapshot.free_heap_bytes,
                 .minimum_free_heap_bytes = snapshot.minimum_free_heap_bytes,
                 .minimum_free_stack_bytes = static_cast<std::uint32_t>(minimum_free_stack),
@@ -96,8 +118,6 @@ namespace {
                 ESP_LOGW(TAG, "Telemetry queue full; dropped message: %" PRIu32, message.sequence);
             }
 
-            sequence++;
-
             vTaskDelay(BLINK_DURATION);
 
             ESP_ERROR_CHECK(
@@ -107,9 +127,9 @@ namespace {
             const int64_t elapsed_time_us = end_time_us - start_time_us;
 
             ESP_LOGI(TAG,
-                "LED active duration = %" PRIu64 "μs (%" PRIu64 " ms)",
-                elapsed_time_us,
-                elapsed_time_us /1000);
+                     "LED active duration = %" PRIu64 "μs (%" PRIu64 " ms)",
+                     elapsed_time_us,
+                     elapsed_time_us /1000);
 
             xTaskDelayUntil(
                 &last_wake_time,
@@ -117,7 +137,7 @@ namespace {
         }
     }
 
-    void processing_task(void* parameters) {
+    void processing_task(void *parameters) {
         QueueHandle_t telemetry_queue = get_queue_from_parameters(parameters);
 
         if (telemetry_queue == nullptr) {
@@ -143,8 +163,8 @@ namespace {
                 continue;
             }
 
-            const::telemetry::ValidationResult validation_result =
-                telemetry::validate(message);
+            const ::telemetry::ValidationResult validation_result =
+                    telemetry::validate(message);
 
             if (validation_result != telemetry::ValidationResult::valid) {
                 ESP_LOGW(
@@ -158,32 +178,32 @@ namespace {
             const telemetry::SequenceResult sequence_result = sequence_tracker.observe(message.sequence);
 
             ESP_LOGI(TAG,
-                "sequence_status = %s, expected = %" PRIu32
-                ", received = %" PRIu32
-                ", missing = %" PRIu32,
-                telemetry::to_string(sequence_result.status),
-                sequence_result.expected_sequence,
-                sequence_result.received_sequence,
-                sequence_result.missing_messages);
+                     "sequence_status = %s, expected = %" PRIu32
+                     ", received = %" PRIu32
+                     ", missing = %" PRIu32,
+                     telemetry::to_string(sequence_result.status),
+                     sequence_result.expected_sequence,
+                     sequence_result.received_sequence,
+                     sequence_result.missing_messages);
 
             const std::uint32_t used_heap_bytes = message.total_heap_bytes - message.free_heap_bytes;
 
             ESP_LOGI(TAG,
-                "sequence = %" PRIu32
-                "\nuptime = %" PRIu64
-                "ms\nheap_used = %" PRIu32
-                " bytes\nheap_free = %" PRIu32
-                " bytes\nheap_total = %" PRIu32
-                " bytes\nminimum_free_heap = %" PRIu32
-                " bytes\nminimum_free_stack = % " PRIu32
-                " bytes",
-                message.sequence,
-                message.uptime_ms,
-                used_heap_bytes,
-                message.free_heap_bytes,
-                message.total_heap_bytes,
-                message.minimum_free_heap_bytes,
-                message.minimum_free_stack_bytes);
+                     "sequence = %" PRIu32
+                     "\nuptime = %" PRIu64
+                     "ms\nheap_used = %" PRIu32
+                     " bytes\nheap_free = %" PRIu32
+                     " bytes\nheap_total = %" PRIu32
+                     " bytes\nminimum_free_heap = %" PRIu32
+                     " bytes\nminimum_free_stack = % " PRIu32
+                     " bytes",
+                     message.sequence,
+                     message.uptime_ms,
+                     used_heap_bytes,
+                     message.free_heap_bytes,
+                     message.total_heap_bytes,
+                     message.minimum_free_heap_bytes,
+                     message.minimum_free_stack_bytes);
         }
     }
 }
@@ -203,8 +223,8 @@ extern "C" void app_main() {
     }
 
     ESP_LOGI(TAG, "Telemetry queue created: capacity = %u, item_size = %u bytes",
-        static_cast<unsigned>(TELEMETRY_QUEUE_LENGTH),
-        static_cast<unsigned>(sizeof(telemetry::TelemetryMessage)));
+             static_cast<unsigned>(TELEMETRY_QUEUE_LENGTH),
+             static_cast<unsigned>(sizeof(telemetry::TelemetryMessage)));
 
     TaskHandle_t processing_task_handle = nullptr;
 
