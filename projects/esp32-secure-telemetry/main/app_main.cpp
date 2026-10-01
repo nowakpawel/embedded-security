@@ -43,9 +43,19 @@ namespace {
     constexpr bool ENABLE_DUPLICATE_SEQUENCE_INJECTION = false;
     constexpr std::uint32_t DUPLICATE_SEQUENCE_TRIGGER = 5;
 
+    //Set to true only for integration fault-injection tests
+    constexpr bool ENABLE_GAP_SEQUENCE_INJECTION = true;
+    constexpr std::uint32_t GAP_SEQUENCE_TRIGGER = 5;
+
     static_assert(
         DUPLICATE_SEQUENCE_TRIGGER > 0,
-        "Duplicate sequence trigger must be grater than zero");
+        "Duplicate sequence trigger must be greater than zero");
+
+    static_assert(
+        !(ENABLE_DUPLICATE_SEQUENCE_INJECTION && ENABLE_GAP_SEQUENCE_INJECTION),
+        "Only one sequence fault injection can be enabled");
+
+
 
 
     void configure_status_led() {
@@ -77,6 +87,7 @@ namespace {
         TickType_t last_wake_time = xTaskGetTickCount();
         std::uint32_t sequence = 0;
         bool duplicate_sequence_injected = false;
+        bool gap_sequence_injected = false;
 
         ESP_LOGI(TAG, "Diagnostics task started");
 
@@ -96,6 +107,20 @@ namespace {
 
                 ESP_LOGW(TAG,
                          "Injecting duplicate sequence: %" PRIu32, sequence_to_send);
+            } else if (ENABLE_GAP_SEQUENCE_INJECTION
+                        && !gap_sequence_injected
+                        && sequence == GAP_SEQUENCE_TRIGGER) {
+                const uint32_t skipped_sequence = sequence;
+
+                sequence_to_send = sequence + 1U;
+                sequence = sequence_to_send + 1U;
+                gap_sequence_injected = true;
+
+                ESP_LOGW(TAG,
+                    "Injecting sequence gap: skipped = %" PRIu32
+                    ", sent = %" PRIu32,
+                    skipped_sequence,
+                    sequence_to_send);
             } else {
                 sequence++;
             }
