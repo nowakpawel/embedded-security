@@ -43,16 +43,17 @@ namespace {
         none,
         duplicate_once,
         gap_once,
+        out_of_order_once,
     };
 
-    //Select a non-default mode only for integration fault-injection tests.
+    // Select a non-default mode only for integration fault-injection tests.
     constexpr SequenceFaultMode SEQUENCE_FAULT_MODE =
-        SequenceFaultMode::none;
+            SequenceFaultMode::none;
     constexpr std::uint32_t SEQUENCE_FAULT_TRIGGER = 5;
 
     static_assert(
-        SEQUENCE_FAULT_TRIGGER > 0U,
-        "Sequence fault trigger must be greater than zero");
+        SEQUENCE_FAULT_TRIGGER >= 2U,
+        "Sequence fault trigger must be at least two");
 
     void configure_status_led() {
         gpio_config_t config{};
@@ -95,30 +96,40 @@ namespace {
 
             std::uint32_t sequence_to_send = sequence;
 
+            //TODO: move  below check to separate method/function
             const bool should_inject_fault = !sequence_fault_injected && sequence == SEQUENCE_FAULT_TRIGGER;
 
             if (should_inject_fault && SEQUENCE_FAULT_MODE == SequenceFaultMode::duplicate_once) {
-                sequence_to_send = sequence -1U;
+                sequence_to_send = sequence - 1U;
                 sequence_fault_injected = true;
 
                 ESP_LOGW(TAG,
-                    "Injecting duplicate sequence = %" PRIu32,
+                         "Injecting duplicate sequence = %" PRIu32,
+                         sequence_to_send);
+            } else if (should_inject_fault && SEQUENCE_FAULT_MODE == SequenceFaultMode::gap_once) {
+                const std::uint32_t skipped_sequence = sequence;
+
+                sequence_to_send = sequence + 1U;
+                sequence = sequence_to_send + 1U;
+                sequence_fault_injected = true;
+
+                ESP_LOGW(
+                    TAG,
+                    "Injecting sequence gap: skipped = %" PRIu32
+                    ", sent = %" PRIu32,
+                    skipped_sequence,
                     sequence_to_send);
-            } else if (should_inject_fault && SEQUENCE_FAULT_MODE == SequenceFaultMode::duplicate_once) {
-                    const std::uint32_t skipped_sequence = sequence;
+            } else if (should_inject_fault && SEQUENCE_FAULT_MODE == SequenceFaultMode::out_of_order_once) {
 
-                    sequence_to_send = sequence + 1U;
-                    sequence = sequence_to_send + 1U;
-                    sequence_fault_injected = true;
+                sequence_to_send = sequence - 2U;
+                sequence_fault_injected = true;
 
-                    ESP_LOGW(
-                        TAG,
-                        "Injecting sequence gap: skipped = %" PRIu32
-                        ", sent = %" PRIu32,
-                        skipped_sequence,
-                        sequence_to_send);
-
-                } else {
+                ESP_LOGW(TAG,
+                    "Injecting out-of-order sequence: expected = %" PRIu32
+                    ", sent = %" PRIu32,
+                    sequence,
+                    sequence_to_send);
+            } else {
                 sequence++;
             }
 
@@ -149,9 +160,9 @@ namespace {
             const int64_t elapsed_time_us = end_time_us - start_time_us;
 
             ESP_LOGI(TAG,
-                     "LED active duration = %" PRIu64 "μs (%" PRIu64 " ms)",
+                     "LED active duration = %" PRId64 "μs (%" PRId64 " ms)",
                      elapsed_time_us,
-                     elapsed_time_us /1000);
+                     elapsed_time_us / 1000);
 
             xTaskDelayUntil(
                 &last_wake_time,
@@ -185,7 +196,7 @@ namespace {
                 continue;
             }
 
-            const ::telemetry::ValidationResult validation_result =
+            const telemetry::ValidationResult validation_result =
                     telemetry::validate(message);
 
             if (validation_result != telemetry::ValidationResult::valid) {
@@ -196,6 +207,7 @@ namespace {
                     telemetry::to_string(validation_result));
                 continue;
             }
+
 
             const telemetry::SequenceResult sequence_result = sequence_tracker.observe(message.sequence);
 
@@ -217,7 +229,7 @@ namespace {
                      " bytes\nheap_free = %" PRIu32
                      " bytes\nheap_total = %" PRIu32
                      " bytes\nminimum_free_heap = %" PRIu32
-                     " bytes\nminimum_free_stack = % " PRIu32
+                     " bytes\nminimum_free_stack = %" PRIu32
                      " bytes",
                      message.sequence,
                      message.uptime_ms,
