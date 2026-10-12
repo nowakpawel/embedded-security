@@ -46,6 +46,38 @@ namespace {
         out_of_order_once,
     };
 
+    struct ProcessingStats {
+        std::uint32_t received_messages{0};
+        std::uint32_t accepted_messages{0};
+        std::uint32_t rejected_messages{0};
+
+        std::uint32_t duplicate_messages{0};
+        std::uint32_t out_of_order_messages{0};
+
+
+        std::uint32_t sequence_gaps{0};
+        std::uint32_t missing_messages{0};
+    };
+
+    void log_processing_stats(const ProcessingStats& stats) {
+        ESP_LOGI(
+            TAG,
+            "Processing stats: received = %" PRIu32
+            ", accepted = %" PRIu32
+            ", rejected = %" PRIu32
+            ", duplicates = %" PRIu32
+            ", out_of_order = %" PRIu32
+            ", gaps = %" PRIu32
+            ", missing = %" PRIu32,
+            stats.received_messages,
+            stats.accepted_messages,
+            stats.rejected_messages,
+            stats.duplicate_messages,
+            stats.out_of_order_messages,
+            stats.sequence_gaps,
+            stats.missing_messages);
+    }
+
     // Select a non-default mode only for integration fault-injection tests.
     constexpr SequenceFaultMode SEQUENCE_FAULT_MODE =
             SequenceFaultMode::none;
@@ -96,7 +128,7 @@ namespace {
 
             std::uint32_t sequence_to_send = sequence;
 
-            //TODO: move  below check to separate method/function
+            //TODO: move below check to separate method/function
             const bool should_inject_fault = !sequence_fault_injected && sequence == SEQUENCE_FAULT_TRIGGER;
 
             if (should_inject_fault && SEQUENCE_FAULT_MODE == SequenceFaultMode::duplicate_once) {
@@ -104,8 +136,8 @@ namespace {
                 sequence_fault_injected = true;
 
                 ESP_LOGW(TAG,
-                         "Injecting duplicate sequence = %" PRIu32,
-                         sequence_to_send);
+                    "Injecting duplicate sequence = %" PRIu32,
+                    sequence_to_send);
             } else if (should_inject_fault && SEQUENCE_FAULT_MODE == SequenceFaultMode::gap_once) {
                 const std::uint32_t skipped_sequence = sequence;
 
@@ -182,6 +214,7 @@ namespace {
         ESP_LOGI(TAG, "Processing task started");
 
         telemetry::SequenceTracker sequence_tracker;
+        ProcessingStats stats;
 
         while (true) {
             telemetry::TelemetryMessage message{};
@@ -196,20 +229,66 @@ namespace {
                 continue;
             }
 
+            ++stats.received_messages;
+
             const telemetry::ValidationResult validation_result =
                     telemetry::validate(message);
 
             if (validation_result != telemetry::ValidationResult::valid) {
+                ++stats.rejected_messages;
+
                 ESP_LOGW(
                     TAG,
                     "Rejected telemetry message sequence = %" PRIu32
                     ", reason: %s", message.sequence,
                     telemetry::to_string(validation_result));
+
+                log_processing_stats(stats);
                 continue;
             }
 
 
             const telemetry::SequenceResult sequence_result = sequence_tracker.observe(message.sequence);
+            switch (sequence_result.status) {
+                case telemetry::SequenceStatus::first_message:
+                case telemetry::SequenceStatus::in_order:
+                    ++stats.accepted_messages;
+                    break;
+
+                case telemetry::SequenceStatus::gap:
+                    ++stats.accepted_messages;
+                    ++stats.sequence_gaps;
+                    stats.missing_messages += sequence_result.missing_messages;
+                    break;
+
+                case telemetry::SequenceStatus::duplicate:
+                    ++stats.rejected_messages;
+                    ++stats.duplicate_messages;
+
+                    ESP_LOGW(
+                        TAG,
+                        "Rejected duplicate telemetry message: sequence = %" PRIu32,
+                        message.sequence);
+
+                    log_processing_stats(stats);
+                    continue;
+
+                case telemetry::SequenceStatus::out_of_order:
+                    ++stats.rejected_messages;
+                    ++stats.out_of_order_messages;
+
+                    ESP_LOGW(
+                        TAG,
+                        "Rejected out-of-order telemetry message: sequence = %" PRIu32
+                        ", expected = %" PRIu32,
+                        message.sequence,
+                        sequence_result.expected_sequence);
+
+                    log_processing_stats(stats);
+                    continue;
+            }
+
+            log_processing_stats(stats);
 
             ESP_LOGI(TAG,
                      "sequence_status = %s, expected = %" PRIu32
