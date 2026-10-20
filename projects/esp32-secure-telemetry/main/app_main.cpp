@@ -34,6 +34,10 @@ namespace {
     constexpr TickType_t QUEUE_SEND_TIMEOUT = pdMS_TO_TICKS(6000);
     constexpr TickType_t QUEUE_RECEIVE_TIMEOUT = pdMS_TO_TICKS(6000);
 
+    //Enable only for queue overload integration test
+    constexpr bool ENABLE_QUEUE_OVERLOAD_TEST = false;
+    constexpr TickType_t PROCESSING_TEST_DELAY = pdMS_TO_TICKS(15000);
+
     constexpr gpio_num_t BLINK_GPIO = GPIO_NUM_2;
 
     constexpr std::uint32_t LED_ON = 1;
@@ -230,6 +234,14 @@ namespace {
             }
 
             ++stats.received_messages;
+
+            if (ENABLE_QUEUE_OVERLOAD_TEST) {
+                ESP_LOGW(
+                    TAG, "Queue overload test: delaying processing of sequence = %" PRIu32,
+                    message.sequence);
+
+                vTaskDelay(PROCESSING_TEST_DELAY);
+            }
 
             const telemetry::ValidationResult validation_result =
                     telemetry::validate(message);
